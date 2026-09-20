@@ -14,6 +14,7 @@
             --text-muted: #64748b;
             --border: #e2e8f0;
             --accent: #3b82f6;
+            --danger: #ef4444;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
         body { background-color: var(--bg); color: var(--text); padding: 16px; min-height: 100vh; display: flex; flex-direction: column; align-items: center; }
@@ -49,9 +50,11 @@
         .client-task { background: rgba(59, 130, 246, 0.1); border-left: 3px solid var(--accent); padding: 6px 10px; font-size: 0.85rem; border-radius: 0 4px 4px 0; color: #1d4ed8; display: flex; justify-content: space-between; align-items: center; }
         .empty-state { text-align: center; color: var(--text-muted); padding: 20px; font-size: 0.9rem; }
         
-        .toolbar { display: flex; gap: 6px; }
+        .toolbar { display: flex; gap: 6px; flex-wrap: wrap; }
         .btn-sm { background: #ffffff; border: 1px solid var(--border); color: var(--text); padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; cursor: pointer; }
         .btn-sm:hover { background: var(--border); }
+        .btn-danger { color: var(--danger); border-color: #fca5a5; }
+        .btn-danger:hover { background: #ffeeef; }
     </style>
 </head>
 <body>
@@ -60,8 +63,9 @@
             <h1>🎙️ Hlasové CRM <span class="badge">PRO</span></h1>
             <div class="toolbar">
                 <input type="file" id="importFile" accept=".csv" style="display:none" onchange="importCRM(event)">
-                <button class="btn-sm" onclick="document.getElementById('importFile').click()">📂 Import AppSheet CSV</button>
+                <button class="btn-sm" onclick="document.getElementById('importFile').click()">📂 Import</button>
                 <button class="btn-sm" onclick="exportData()">Export</button>
+                <button class="btn-sm btn-danger" onclick="clearAllData()">🗑️ Reset vše</button>
             </div>
         </header>
 
@@ -236,6 +240,23 @@
             document.getElementById('clientDateTask').value = '';
         }
 
+        function deleteClient(name) {
+            if (confirm(`Opravdu chceš smazat zákazníka "${name}" včetně celé historie?`)) {
+                let db = getDB();
+                delete db[name];
+                saveDB(db);
+            }
+        }
+
+        function clearAllData() {
+            if (confirm('Opravdu chceš vymazat všechna data v aplikaci? (Ideální pro čistý import správného CSV).')) {
+                localStorage.removeItem('hlasove_crm_db');
+                updateSuggestions();
+                loadClients();
+                alert('Všechna data byla vymazána.');
+            }
+        }
+
         function loadClients() {
             const listContainer = document.getElementById('clientList');
             const searchQuery = document.getElementById('searchInput').value.toLowerCase();
@@ -266,7 +287,10 @@
                 div.innerHTML = `
                     <div class="client-header">
                         <span class="client-name">${name}</span>
-                        <span style="font-size:0.75rem; color: var(--text-muted);">${clientData.notes.length} záznamů</span>
+                        <div>
+                            <span style="font-size:0.75rem; color: var(--text-muted); margin-right: 8px;">${clientData.notes.length} záznamů</span>
+                            <button class="btn-sm btn-danger" onclick="deleteClient('${name.replace(/'/g, "\\'")}')">🗑️ Smazat</button>
+                        </div>
                     </div>
                     ${notesHtml || '<div style="font-size:0.8rem; color:var(--text-muted);">Zatím žádné poznámky.</div>'}
                     ${tasksHtml}
@@ -275,7 +299,6 @@
             });
         }
 
-        // Robustní parsování CSV (poradí si i s uvozovkami a čárkami uvnitř buněk)
         function parseCSVLine(text) {
             let result = [];
             let inQuotes = false;
@@ -309,29 +332,25 @@
                     if (!line.trim()) return;
                     const cols = parseCSVLine(line);
                     
-                    // Sloupec B (index 1) je Jméno, Sloupec F (index 5) je Poznámka
                     if (cols.length >= 2) {
                         const name = cols[1];
                         const noteText = cols.length >= 6 ? cols[5] : '';
 
-                        // Ignorovat hlavičku tabulky
-                        if (index === 0 || (name && name.toLowerCase() === 'jméno')) return;
+                        // Ignorovat hlavičku a případné řádky, kde je v názvu "Jméno" nebo nesmysly
+                        if (index === 0 || !name || name.toLowerCase() === 'jméno' || name.length < 2) return;
 
-                        if (name) {
-                            if (!db[name]) {
-                                db[name] = { notes: [], tasks: [] };
-                                count++;
-                            }
-                            // Pokud má zákazník v tabulce poznámku (sloupec F), přidáme ji do historie
-                            if (noteText && !db[name].notes.some(n => n.text === noteText)) {
-                                db[name].notes.push({ text: noteText, date: 'Import z AppSheetu' });
-                            }
+                        if (!db[name]) {
+                            db[name] = { notes: [], tasks: [] };
+                            count++;
+                        }
+                        if (noteText && !db[name].notes.some(n => n.text === noteText)) {
+                            db[name].notes.push({ text: noteText, date: 'Import z AppSheetu' });
                         }
                     }
                 });
 
                 saveDB(db);
-                alert(`Úspěšně naimportováno ${count} zákazníků včetně jejich poznámek z AppSheetu!`);
+                alert(`Úspěšně naimportováno ${count} zákazníků z AppSheetu!`);
             };
             reader.readAsText(file, 'UTF-8');
         }
