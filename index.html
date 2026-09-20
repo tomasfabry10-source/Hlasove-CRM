@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hlasové CRM</title>
+    <style>
+        :root {
+            --primary: #dc2626;
+            --primary-dark: #b91c1c;
+            --bg: #ffffff;
+            --card-bg: #f8fafc;
+            --text: #0f172a;
+            --text-muted: #64748b;
+            --border: #e2e8f0;
+            --accent: #3b82f6;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background-color: var(--bg); color: var(--text); padding: 16px; min-height: 100vh; display: flex; flex-direction: column; align-items: center; }
+        .container { width: 100%; max-width: 600px; display: flex; flex-direction: column; gap: 20px; }
+        header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
+        h1 { font-size: 1.25rem; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 8px; }
+        .badge { background: rgba(220, 38, 38, 0.1); color: var(--primary); font-size: 0.75rem; padding: 4px 8px; border-radius: 99px; font-weight: 600; }
+        
+        .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+        .btn-mic { background: var(--primary); color: white; border: none; border-radius: 50%; width: 72px; height: 72px; font-size: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; align-self: center; box-shadow: 0 4px 14px rgba(220, 38, 38, 0.3); transition: transform 0.1s, background 0.2s; }
+        .btn-mic:active { transform: scale(0.95); }
+        .btn-mic.recording { background: #10b981; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.6); } 70% { box-shadow: 0 0 0 15px rgba(16, 185, 129, 0); } 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); } }
+
+        textarea { width: 100%; height: 80px; background: #ffffff; border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 12px; font-size: 0.95rem; resize: none; }
+        textarea:focus { outline: none; border-color: var(--primary); }
+
+        .form-row { display: flex; gap: 10px; }
+        .form-group { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+        label { font-size: 0.75rem; color: var(--text-muted); font-weight: 600; }
+        input, select { background: #ffffff; border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 8px; font-size: 0.9rem; }
+        input:focus, select:focus { outline: none; border-color: var(--primary); }
+
+        .btn-primary { background: var(--primary); color: white; border: none; border-radius: 8px; padding: 12px; font-weight: 600; font-size: 1rem; cursor: pointer; transition: background 0.2s; }
+        .btn-primary:hover { background: var(--primary-dark); }
+
+        .section-title { font-size: 1rem; font-weight: 600; color: var(--text-muted); margin-top: 10px; display: flex; justify-content: space-between; align-items: center; }
+        .client-list { display: flex; flex-direction: column; gap: 10px; max-height: 40vh; overflow-y: auto; padding-right: 4px; }
+        .client-item { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 6px; }
+        .client-header { display: flex; justify-content: space-between; align-items: center; }
+        .client-name { font-weight: 700; color: var(--text); font-size: 1.05rem; }
+        .history-box { font-size: 0.85rem; color: var(--text); background: #ffffff; border: 1px solid var(--border); padding: 6px 8px; border-radius: 4px; margin-top: 4px; }
+        .client-task { background: rgba(59, 130, 246, 0.1); border-left: 3px solid var(--accent); padding: 6px 10px; font-size: 0.85rem; border-radius: 0 4px 4px 0; color: #1d4ed8; display: flex; justify-content: space-between; align-items: center; }
+        .empty-state { text-align: center; color: var(--text-muted); padding: 20px; font-size: 0.9rem; }
+        
+        .toolbar { display: flex; gap: 6px; }
+        .btn-sm { background: #ffffff; border: 1px solid var(--border); color: var(--text); padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; cursor: pointer; }
+        .btn-sm:hover { background: var(--border); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎙️ Hlasové CRM <span class="badge">PRO</span></h1>
+            <div class="toolbar">
+                <input type="file" id="importFile" accept=".csv" style="display:none" onchange="importCRM(event)">
+                <button class="btn-sm" onclick="document.getElementById('importFile').click()">📂 Import CRM</button>
+                <button class="btn-sm" onclick="exportData()">Export</button>
+            </div>
+        </header>
+
+        <div class="card">
+            <p style="font-size: 0.85rem; color: var(--text-muted); text-align: center;">Nadiktuj poznámku, AI dohledá zákazníka a zapíše ji k němu:</p>
+            <button id="micBtn" class="btn-mic" onclick="toggleRecord()">🎤</button>
+            <textarea id="transcript" placeholder="Zde se objeví text z mikrofonu..."></textarea>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Zákazník / Prodejna</label>
+                    <input type="text" id="clientName" list="clientSuggestions" placeholder="Vyber nebo napiš jméno...">
+                    <datalist id="clientSuggestions"></datalist>
+                </div>
+                <div class="form-group">
+                    <label>Termín / Follow-up</label>
+                    <input type="date" id="clientDateTask">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Úkol / Další krok</label>
+                <input type="text" id="clientTask" placeholder="Např. přivézt vzorky, zavolat kvůli chladničce">
+            </div>
+
+            <button class="btn-primary" onclick="saveClient()">Uložit / Připsat k zákazníkovi</button>
+        </div>
+
+        <div class="section-title">
+            <span>Seznam zákazníků a historie</span>
+            <input type="text" id="searchInput" placeholder="Hledat v zákaznících..." oninput="loadClients()" style="padding: 4px 8px; font-size: 0.8rem; width: 150px; background:#fff;">
+        </div>
+        <div id="clientList" class="client-list">
+            <div class="empty-state">Zatím žádní zákazníci. Nadiktuj prvního nebo naimportuj CSV z AppSheetu!</div>
+        </div>
+    </div>
+
+    <script>
+        let recognition = null;
+        let isRecording = false;
+
+        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRecognition();
+            recognition.lang = 'cs-CZ';
+            recognition.continuous = false;
+            recognition.interimResults = true;
+
+            recognition.onresult = (event) => {
+                let interim = '';
+                let final = '';
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) {
+                        final += event.results[i][0].transcript;
+                    } else {
+                        interim += event.results[i][0].transcript;
+                    }
+                }
+                const text = final || interim;
+                document.getElementById('transcript').value = text;
+                parseSmartText(text);
+            };
+
+            recognition.onerror = () => stopRecordUI();
+            recognition.onend = () => stopRecordUI();
+        }
+
+        function toggleRecord() {
+            if (!recognition) return;
+            if (isRecording) {
+                recognition.stop();
+            } else {
+                document.getElementById('transcript').value = '';
+                recognition.start();
+                startRecordUI();
+            }
+        }
+
+        function startRecordUI() {
+            isRecording = true;
+            document.getElementById('micBtn').classList.add('recording');
+            document.getElementById('micBtn').innerHTML = '⏹️';
+        }
+
+        function stopRecordUI() {
+            isRecording = false;
+            document.getElementById('micBtn').classList.remove('recording');
+            document.getElementById('micBtn').innerHTML = '🎤';
+        }
+
+        function parseSmartText(text) {
+            const lower = text.toLowerCase();
+            const words = text.split(' ');
+            let foundClient = "";
+
+            const uIndex = words.findIndex(w => w.toLowerCase() === 'u' || w.toLowerCase() === 'v');
+            if (uIndex !== -1 && words[uIndex + 1]) {
+                foundClient = words[uIndex + 1].replace(/[,.]/g, '');
+                if (words[uIndex + 2] && !['zavolat', 'chtít', 'vzít', 'přivézt', 'objednat', 'řešit'].includes(words[uIndex + 2].toLowerCase())) {
+                    foundClient += ' ' + words[uIndex + 2].replace(/[,.]/g, '');
+                }
+            } else if (words.length > 0) {
+                foundClient = words.slice(0, 2).join(' ');
+            }
+
+            if (foundClient) {
+                const formattedName = foundClient.charAt(0).toUpperCase() + foundClient.slice(1);
+                document.getElementById('clientName').value = formattedName;
+            }
+
+            if (lower.includes('zavolat') || lower.includes('přivézt') || lower.includes('zkontrolovat') || lower.includes('objednat') || lower.includes('vyřešit')) {
+                document.getElementById('clientTask').value = text;
+            }
+
+            if (lower.includes('zítra')) {
+                const tomorrow = new Date();
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                document.getElementById('clientDateTask').valueAsDate = tomorrow;
+            }
+        }
+
+        function getDB() {
+            return JSON.parse(localStorage.getItem('hlasove_crm_db') || '{}');
+        }
+
+        function saveDB(db) {
+            localStorage.setItem('hlasove_crm_db', JSON.stringify(db));
+            updateSuggestions();
+            loadClients();
+        }
+
+        function updateSuggestions() {
+            const db = getDB();
+            const datalist = document.getElementById('clientSuggestions');
+            datalist.innerHTML = '';
+            Object.keys(db).forEach(clientName => {
+                const option = document.createElement('option');
+                option.value = clientName;
+                datalist.appendChild(option);
+            });
+        }
+
+        function saveClient() {
+            const clientNameInput = document.getElementById('clientName').value.trim();
+            const note = document.getElementById('transcript').value.trim();
+            const task = document.getElementById('clientTask').value.trim();
+            const dueDate = document.getElementById('clientDateTask').value;
+
+            if (!clientNameInput) {
+                alert('Zadej nebo vyber jméno zákazníka.');
+                return;
+            }
+
+            let db = getDB();
+            if (!db[clientNameInput]) {
+                db[clientNameInput] = { notes: [], tasks: [] };
+            }
+
+            const timestamp = new Date().toLocaleDateString('cs-CZ') + ' ' + new Date().toLocaleTimeString('cs-CZ', {hour: '2-digit', minute:'2-digit'});
+
+            if (note) {
+                db[clientNameInput].notes.unshift({ text: note, date: timestamp });
+            }
+            if (task) {
+                db[clientNameInput].tasks.unshift({ text: task, dueDate: dueDate, date: timestamp });
+            }
+
+            saveDB(db);
+
+            document.getElementById('transcript').value = '';
+            document.getElementById('clientName').value = '';
+            document.getElementById('clientTask').value = '';
+            document.getElementById('clientDateTask').value = '';
+        }
+
+        function loadClients() {
+            const listContainer = document.getElementById('clientList');
+            const searchQuery = document.getElementById('searchInput').value.toLowerCase();
+            const db = getDB();
+            const clientNames = Object.keys(db);
+
+            const filteredNames = clientNames.filter(name => name.toLowerCase().includes(searchQuery));
+
+            if (filteredNames.length === 0) {
+                listContainer.innerHTML = '<div class="empty-state">Žádní odpovídající zákazníci.</div>';
+                return;
+            }
+
+            listContainer.innerHTML = '';
+            filteredNames.forEach(name => {
+                const clientData = db[name];
+                const div = document.createElement('div');
+                div.className = 'client-item';
+
+                let notesHtml = clientData.notes.map(n => `<div class="history-box">📝 ${n.text} <span style="float:right; font-size:0.75rem; opacity:0.6;">${n.date}</span></div>`).join('');
+                let tasksHtml = clientData.tasks.map(t => `
+                    <div class="client-task" style="margin-top: 4px;">
+                        <span>📌 ${t.text}</span>
+                        ${t.dueDate ? `<strong>📅 ${t.dueDate}</strong>` : ''}
+                    </div>
+                `).join('');
+
+                div.innerHTML = `
+                    <div class="client-header">
+                        <span class="client-name">${name}</span>
+                        <span style="font-size:0.75rem; color: var(--text-muted);">${clientData.notes.length} záznamů</span>
+                    </div>
+                    ${notesHtml || '<div style="font-size:0.8rem; color:var(--text-muted);">Zatím žádné poznámky.</div>'}
+                    ${tasksHtml}
+                `;
+                listContainer.appendChild(div);
+            });
+        }
+
+        function importCRM(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const text = e.target.result;
+                const lines = text.split('\n');
+                let db = getDB();
+                let count = 0;
+                lines.forEach(line => {
+                    const parts = line.split(/[,;]/);
+                    if (parts.length > 0 && parts[0].trim()) {
+                        const name = parts[0].replace(/["']/g, "").trim();
+                        if (name && name.toLowerCase() !== 'zákazník' && name.toLowerCase() !== 'name') {
+                            if (!db[name]) {
+                                db[name] = { notes: [], tasks: [] };
+                                count++;
+                            }
+                        }
+                    }
+                });
+                saveDB(db);
+                alert(`Úspěšně importováno ${count} zákazníků z tvého AppSheet/Excel souboru!`);
+            };
+            reader.readAsText(file, 'UTF-8');
+        }
+
+        function exportData() {
+            const db = getDB();
+            let csv = 'Zákazník;Typ;Obsah;Termín;Datum\n';
+            Object.keys(db).forEach(name => {
+                db[name].notes.forEach(n => {
+                    csv += `"${name}";"Poznámka";"${n.text}";"";"${n.date}"\n`;
+                });
+                db[name].tasks.forEach(t => {
+                    csv += `"${name}";"Úkol";"${t.text}";"${t.dueDate || ''}";"${t.date}"\n`;
+                });
+            });
+            const blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'hlasove_crm_export.csv';
+            a.click();
+        }
+
+        window.onload = () => {
+            updateSuggestions();
+            loadClients();
+        };
+    </script>
+</body>
+</html>
