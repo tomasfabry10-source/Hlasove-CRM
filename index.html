@@ -19,7 +19,7 @@
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
         body { background-color: var(--bg); color: var(--text); padding: 16px; min-height: 100vh; display: flex; flex-direction: column; align-items: center; }
         .container { width: 100%; max-width: 600px; display: flex; flex-direction: column; gap: 20px; }
-        header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
+        header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 12px; flex-wrap: wrap; gap: 10px; }
         h1 { font-size: 1.25rem; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 8px; }
         .badge { background: rgba(220, 38, 38, 0.1); color: var(--primary); font-size: 0.75rem; padding: 4px 8px; border-radius: 99px; font-weight: 600; }
         
@@ -62,10 +62,10 @@
         <header>
             <h1>🎙️ Hlasové CRM <span class="badge">PRO</span></h1>
             <div class="toolbar">
-                <input type="file" id="importFile" accept=".csv" style="display:none" onchange="importCRM(event)">
-                <button class="btn-sm" onclick="document.getElementById('importFile').click()">📂 Import</button>
-                <button class="btn-sm" onclick="exportData()">Export</button>
-                <button class="btn-sm btn-danger" onclick="clearAllData()">🗑️ Reset vše</button>
+                <input type="file" id="importFile" accept=".json" style="display:none" onchange="importBackup(event)">
+                <button class="btn-sm" onclick="document.getElementById('importFile').click()">📥 Nahrát zálohu</button>
+                <button class="btn-sm" onclick="exportBackup()">📤 Stáhnout zálohu</button>
+                <button class="btn-sm btn-danger" onclick="clearAllData()">🗑️ Reset</button>
             </div>
         </header>
 
@@ -98,7 +98,7 @@
             <input type="text" id="searchInput" placeholder="Hledat v zákaznících..." oninput="loadClients()" style="padding: 4px 8px; font-size: 0.8rem; width: 150px; background:#fff;">
         </div>
         <div id="clientList" class="client-list">
-            <div class="empty-state">Zatím žádní zákazníci. Nadiktuj prvního nebo naimportuj CSV z AppSheetu!</div>
+            <div class="empty-state">Zatím žádní zákazníci. Nadiktuj prvního nebo nahraj zálohu!</div>
         </div>
     </div>
 
@@ -249,7 +249,7 @@
         }
 
         function clearAllData() {
-            if (confirm('Opravdu chceš vymazat všechna data v aplikaci? (Ideální pro čistý import správného CSV).')) {
+            if (confirm('Opravdu chceš vymazat všechna data v aplikaci?')) {
                 localStorage.removeItem('hlasove_crm_db');
                 updateSuggestions();
                 loadClients();
@@ -276,8 +276,8 @@
                 const div = document.createElement('div');
                 div.className = 'client-item';
 
-                let notesHtml = clientData.notes.map(n => `<div class="history-box">📝 ${n.text} <span style="float:right; font-size:0.75rem; opacity:0.6;">${n.date}</span></div>`).join('');
-                let tasksHtml = clientData.tasks.map(t => `
+                let notesHtml = (clientData.notes || []).map(n => `<div class="history-box">📝 ${n.text} <span style="float:right; font-size:0.75rem; opacity:0.6;">${n.date}</span></div>`).join('');
+                let tasksHtml = (clientData.tasks || []).map(t => `
                     <div class="client-task" style="margin-top: 4px;">
                         <span>📌 ${t.text}</span>
                         ${t.dueDate ? `<strong>📅 ${t.dueDate}</strong>` : ''}
@@ -288,7 +288,7 @@
                     <div class="client-header">
                         <span class="client-name">${name}</span>
                         <div>
-                            <span style="font-size:0.75rem; color: var(--text-muted); margin-right: 8px;">${clientData.notes.length} záznamů</span>
+                            <span style="font-size:0.75rem; color: var(--text-muted); margin-right: 8px;">${(clientData.notes || []).length} záznamů</span>
                             <button class="btn-sm btn-danger" onclick="deleteClient('${name.replace(/'/g, "\\'")}')">🗑️ Smazat</button>
                         </div>
                     </div>
@@ -299,79 +299,33 @@
             });
         }
 
-        function parseCSVLine(text) {
-            let result = [];
-            let inQuotes = false;
-            let entry = '';
-            for (let i = 0; i < text.length; i++) {
-                let c = text[i];
-                if (c === '"') {
-                    inQuotes = !inQuotes;
-                } else if ((c === ',' || c === ';') && !inQuotes) {
-                    result.push(entry.trim().replace(/^"|"$/g, ''));
-                    entry = '';
-                } else {
-                    entry += c;
-                }
-            }
-            result.push(entry.trim().replace(/^"|"$/g, ''));
-            return result;
+        // Export celé databáze jako JSON záloha
+        function exportBackup() {
+            const db = getDB();
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(db, null, 2));
+            const downloadAnchor = document.createElement('a');
+            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("download", "hlasove_crm_zaloha.json");
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
         }
 
-        function importCRM(event) {
+        // Import kompletní zálohy do mobilu/PC
+        function importBackup(event) {
             const file = event.target.files[0];
             if (!file) return;
             const reader = new FileReader();
             reader.onload = function(e) {
-                const text = e.target.result;
-                const lines = text.split('\n');
-                let db = getDB();
-                let count = 0;
-
-                lines.forEach((line, index) => {
-                    if (!line.trim()) return;
-                    const cols = parseCSVLine(line);
-                    
-                    if (cols.length >= 2) {
-                        const name = cols[1];
-                        const noteText = cols.length >= 6 ? cols[5] : '';
-
-                        // Ignorovat hlavičku a případné řádky, kde je v názvu "Jméno" nebo nesmysly
-                        if (index === 0 || !name || name.toLowerCase() === 'jméno' || name.length < 2) return;
-
-                        if (!db[name]) {
-                            db[name] = { notes: [], tasks: [] };
-                            count++;
-                        }
-                        if (noteText && !db[name].notes.some(n => n.text === noteText)) {
-                            db[name].notes.push({ text: noteText, date: 'Import z AppSheetu' });
-                        }
-                    }
-                });
-
-                saveDB(db);
-                alert(`Úspěšně naimportováno ${count} zákazníků z AppSheetu!`);
+                try {
+                    const importedDB = JSON.parse(e.target.result);
+                    saveDB(importedDB);
+                    alert('Záloha byla úspěšně nahrána a data jsou aktualizována!');
+                } catch (err) {
+                    alert('Chyba při čtení záložního souboru. Ujisti se, že jde o správný JSON soubor.');
+                }
             };
             reader.readAsText(file, 'UTF-8');
-        }
-
-        function exportData() {
-            const db = getDB();
-            let csv = 'Zákazník;Typ;Obsah;Termín;Datum\n';
-            Object.keys(db).forEach(name => {
-                db[name].notes.forEach(n => {
-                    csv += `"${name}";"Poznámka";"${n.text}";"";"${n.date}"\n`;
-                });
-                db[name].tasks.forEach(t => {
-                    csv += `"${name}";"Úkol";"${t.text}";"${t.dueDate || ''}";"${t.date}"\n`;
-                });
-            });
-            const blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'hlasove_crm_export.csv';
-            a.click();
         }
 
         window.onload = () => {
