@@ -60,7 +60,7 @@
             <h1>🎙️ Hlasové CRM <span class="badge">PRO</span></h1>
             <div class="toolbar">
                 <input type="file" id="importFile" accept=".csv" style="display:none" onchange="importCRM(event)">
-                <button class="btn-sm" onclick="document.getElementById('importFile').click()">📂 Import CRM</button>
+                <button class="btn-sm" onclick="document.getElementById('importFile').click()">📂 Import AppSheet CSV</button>
                 <button class="btn-sm" onclick="exportData()">Export</button>
             </div>
         </header>
@@ -275,6 +275,26 @@
             });
         }
 
+        // Robustní parsování CSV (poradí si i s uvozovkami a čárkami uvnitř buněk)
+        function parseCSVLine(text) {
+            let result = [];
+            let inQuotes = false;
+            let entry = '';
+            for (let i = 0; i < text.length; i++) {
+                let c = text[i];
+                if (c === '"') {
+                    inQuotes = !inQuotes;
+                } else if ((c === ',' || c === ';') && !inQuotes) {
+                    result.push(entry.trim().replace(/^"|"$/g, ''));
+                    entry = '';
+                } else {
+                    entry += c;
+                }
+            }
+            result.push(entry.trim().replace(/^"|"$/g, ''));
+            return result;
+        }
+
         function importCRM(event) {
             const file = event.target.files[0];
             if (!file) return;
@@ -284,20 +304,34 @@
                 const lines = text.split('\n');
                 let db = getDB();
                 let count = 0;
-                lines.forEach(line => {
-                    const parts = line.split(/[,;]/);
-                    if (parts.length > 0 && parts[0].trim()) {
-                        const name = parts[0].replace(/["']/g, "").trim();
-                        if (name && name.toLowerCase() !== 'zákazník' && name.toLowerCase() !== 'name') {
+
+                lines.forEach((line, index) => {
+                    if (!line.trim()) return;
+                    const cols = parseCSVLine(line);
+                    
+                    // Sloupec B (index 1) je Jméno, Sloupec F (index 5) je Poznámka
+                    if (cols.length >= 2) {
+                        const name = cols[1];
+                        const noteText = cols.length >= 6 ? cols[5] : '';
+
+                        // Ignorovat hlavičku tabulky
+                        if (index === 0 || (name && name.toLowerCase() === 'jméno')) return;
+
+                        if (name) {
                             if (!db[name]) {
                                 db[name] = { notes: [], tasks: [] };
                                 count++;
                             }
+                            // Pokud má zákazník v tabulce poznámku (sloupec F), přidáme ji do historie
+                            if (noteText && !db[name].notes.some(n => n.text === noteText)) {
+                                db[name].notes.push({ text: noteText, date: 'Import z AppSheetu' });
+                            }
                         }
                     }
                 });
+
                 saveDB(db);
-                alert(`Úspěšně importováno ${count} zákazníků z tvého AppSheet/Excel souboru!`);
+                alert(`Úspěšně naimportováno ${count} zákazníků včetně jejich poznámek z AppSheetu!`);
             };
             reader.readAsText(file, 'UTF-8');
         }
